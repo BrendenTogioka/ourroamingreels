@@ -3,29 +3,11 @@ interface Props {
   heroSequenceUrl?: string
 }
 const { heroSequenceUrl = '' } = Astro.props
-
-// ── Canvas frame-sequence source ──────────────────────────────────────────
-// The scroll-scrubbed hero is an image frame sequence painted to <canvas>
-// (see BaseLayout.astro hero block). Frames are extracted from the Cloudinary
-// video (heroSequenceUrl) via start-offset transforms (so_<pct>p) — no separate
-// upload needed. We parse the cloud name / version / public-id out of
-// heroSequenceUrl and hand them to the canvas via data-* attributes.
-//
-// ⚑ FILL IN IF THE ASSET CHANGES: this regex assumes a standard delivery URL
-//   …/res.cloudinary.com/<cloud>/video/upload/[transforms/]<vNNN>/<public/id>.<ext>
-//   For the current asset it yields cloud=dlle6kl4n, version=v1779987514,
-//   publicId=OurRoamingReels/hero-bg.
-const heroCloud = heroSequenceUrl.match(
-  /\/res\.cloudinary\.com\/([^/]+)\/video\/upload\/(?:.*?\/)?(v\d+)\/(.+)\.[a-zA-Z0-9]+$/
-)
-const heroCloudName = heroCloud?.[1] ?? ''
-const heroVersion   = heroCloud?.[2] ?? ''
-const heroPublicId  = heroCloud?.[3] ?? ''
 ---
 
-<!-- .hero is a tall scroll TRACK; .hero-sticky pins the visuals via CSS
-     position:sticky (no GSAP pin — that broke scroll tracking on mobile). The
-     scrub length is the .hero height in global.css, not a ScrollTrigger pin. -->
+<!-- .hero-sticky pins the visuals via CSS position:sticky (no GSAP pin — that
+     broke scroll tracking on mobile). Currently .hero is just 100vh (no scroll
+     track) — ⚑ TEMP: to be replaced with a proper background video reel. -->
 <section class="hero" id="hero">
   <div class="hero-sticky">
   <div class:list={['hero-img-wrap', heroSequenceUrl && 'hero-img-wrap--fill']} id="hero-img-wrap">
@@ -36,22 +18,22 @@ const heroPublicId  = heroCloud?.[3] ?? ''
       loading="eager"
       decoding="sync"
     />
-    {/* The poster stays VISIBLE under the canvas — it's the same so_0 frame as
-        canvas frame 1 and paints instantly (eager / high priority), so the hero
-        is never blank while the first frame streams in. The canvas fades in on
-        top once ready (.is-ready). */}
-    {/* Canvas frame-sequence target. Cloudinary parts parsed from heroSequenceUrl
-        build the per-frame URLs; if any part is empty the script bails and the
-        static poster <img> above stays visible. */}
+    {/* The poster stays VISIBLE under the video — it paints instantly
+        (eager / high priority), so the hero is never blank while the video
+        loads. The video fades in on top once it can play (.is-ready). */}
     {heroSequenceUrl && (
-      <canvas
-        id="hero-canvas"
-        class="hero-canvas"
+      <video
+        id="hero-video"
+        class="hero-video"
         aria-hidden="true"
-        data-cloud={heroCloudName}
-        data-version={heroVersion}
-        data-public-id={heroPublicId}
-      ></canvas>
+        autoplay
+        muted
+        loop
+        playsinline
+        preload="auto"
+      >
+        <source src={heroSequenceUrl} type="video/mp4" />
+      </video>
     )}
   </div>
 
@@ -67,18 +49,15 @@ const heroPublicId  = heroCloud?.[3] ?? ''
       <span class="line">OUR ROAMING</span>
       <span class="line accent">REELS</span>
     </h1>
+  </div>
 
-    <div class="hero-sub">
-      <p class="hero-sub-text">
-        Adventures written in stone, fire, ice and root.<br />
-        A field journal from the edges of the earth.
-      </p>
-      <div class="hero-scroll-cue">
-        <span>Descend</span>
-        <div class="scroll-bar"></div>
-      </div>
+  {/* Sibling of .hero-content (not nested) so it can be pinned to the bottom
+      of .hero-sticky independently of the vertically-centered title block. */}
+  <div class="hero-sub">
+    <div class="hero-scroll-cue">
+      <span>Descend</span>
+      <div class="scroll-bar"></div>
     </div>
   </div>
   </div><!-- /.hero-sticky -->
 </section>
-

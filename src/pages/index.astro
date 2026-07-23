@@ -1,47 +1,57 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro'
 import HeroSection from '../components/HeroSection.astro'
-import ExpeditionGallery from '../components/ExpeditionGallery.astro'
+import ExpeditionsPreview from '../components/ExpeditionsPreview.astro'
 import AboutSection from '../components/AboutSection.astro'
 import FeaturedSection from '../components/FeaturedSection.astro'
 import ContactSection from '../components/ContactSection.astro'
 import { client, urlFor, sanityImgSrcset } from '../lib/sanity'
 import { RECENT_TRIPS_QUERY, FEATURED_TRIPS_QUERY } from '../lib/queries'
 
-const trips    = await client.fetch(RECENT_TRIPS_QUERY)
-const featured = await client.fetch(FEATURED_TRIPS_QUERY)
+const trips       = await client.fetch(RECENT_TRIPS_QUERY)
+const allFeatured = await client.fetch(FEATURED_TRIPS_QUERY)
 
-// Shape Sanity trip documents for the gallery component (10 most recent)
-const expeditions = trips.map((trip: any, i: number) => ({
-  num:        String(i + 1).padStart(2, '0'),
-  title:      trip.pageTitle?.join('\n') ?? '',
-  location:   trip.location,
-  year:       trip.date?.split(' ').pop() ?? '',
-  // Mid-res fallback + full-quality URL for iris overlay transition
-  img:        trip.heroImage
-                ? urlFor(trip.heroImage).width(1400).quality(90).format('webp').url()
-                : '',
-  // Responsive srcset: 600→mobile … 2200→large retina (cards are 60–70vw × 100vh)
-  imgSrcset:  trip.heroImage
-                ? sanityImgSrcset(trip.heroImage, [600, 900, 1200, 1800, 2200], 90)
-                : '',
-  // Full-res hero URL — used for hover/click preloading before iris transition
-  heroUrl:    trip.heroImage
-                ? urlFor(trip.heroImage).width(1600).quality(90).format('webp').url()
-                : '',
-  alt:          trip.heroImage?.alt ?? trip.location,
+// Drop the "text + quote" split layout from the homepage feature lineup —
+// keeps every featured section in the same full-bleed text-left/text-right
+// format.
+const featured = allFeatured.filter((f: any) => f.featureLayout !== 'color-quote')
+
+// Shape Sanity trip documents for the expeditions preview grid — same card
+// shape/style as /expeditions, just the 6 most recent (RECENT_TRIPS_QUERY).
+const expeditions = trips.map((trip: any) => ({
   id:           trip.id,
+  title:        trip.pageTitle?.join(' ') ?? '',
+  description:  trip.description ?? '',
+  location:     trip.location,
+  date:         trip.date,
+  category:     trip.category ?? '',
+  tags:         (trip.tags ?? []) as string[],
+  accent:       trip.accentColor ?? '#C04820',
+  img:          trip.heroImage
+                  ? urlFor(trip.heroImage).width(900).quality(88).format('webp').url()
+                  : '',
+  imgSrcset:    trip.heroImage
+                  ? sanityImgSrcset(trip.heroImage, [500, 800, 1100], 88)
+                  : '',
+  alt:          trip.heroImage?.alt ?? trip.location,
+  href:         `/expedition/${trip.id}`,
+  // Full-res hero URL — used by the iris transition on card click
+  heroUrl:      trip.heroImage
+                  ? urlFor(trip.heroImage).width(1600).quality(90).format('webp').url()
+                  : '',
   cardVideoUrl: trip.cardVideoUrl ?? '',
 }))
 
-// Cloudinary source video the hero <canvas> extracts its scroll-scrub frames
-// from (see HeroSection.astro). Not rendered as a <video>.
+// Cloudinary source video the hero <video> autoplays (see HeroSection.astro).
 const heroSequenceUrl = 'https://res.cloudinary.com/dlle6kl4n/video/upload/v1779987514/OurRoamingReels/hero-bg.mp4'
 ---
 
-<BaseLayout preloadImage="https://res.cloudinary.com/dlle6kl4n/video/upload/so_0/v1779987514/OurRoamingReels/hero-bg.jpg">
+<BaseLayout preloadImage="https://res.cloudinary.com/dlle6kl4n/video/upload/so_0/v1779987514/OurRoamingReels/hero-bg.jpg" hasHero>
   <HeroSection heroSequenceUrl={heroSequenceUrl} />
-  <ExpeditionGallery expeditions={expeditions} />
+
+  {featured.map((feature: any, i: number) => (
+    <FeaturedSection feature={feature} index={i} />
+  ))}
 
   <!-- Horizon line #1 — div scaleX 0→1 on scroll (reliable, no SVG unit issues) -->
   <div class="horizon-line-wrap" aria-hidden="true">
@@ -49,8 +59,6 @@ const heroSequenceUrl = 'https://res.cloudinary.com/dlle6kl4n/video/upload/v1779
   </div>
 
   <AboutSection />
-  {featured.map((feature: any, i: number) => (
-    <FeaturedSection feature={feature} index={i} />
-  ))}
+  <ExpeditionsPreview expeditions={expeditions} />
   <ContactSection />
 </BaseLayout>

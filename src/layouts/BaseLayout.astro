@@ -12,6 +12,7 @@ interface Props {
   ogType?:        'website' | 'article'
   isExpedition?:  boolean
   preloadImage?:  string
+  hasHero?:       boolean
 }
 
 const {
@@ -23,6 +24,7 @@ const {
   ogType         = 'website',
   isExpedition   = false,
   preloadImage,
+  hasHero        = false,
 } = Astro.props
 
 const canonical = new URL(Astro.url.pathname, Astro.site).href
@@ -113,7 +115,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href
          Named layers render above position:fixed overlays (curtain/iris) and
          cause visible flashes; without the directive the root opacity:0 rule
          in global.css suppresses the snapshot entirely. -->
-    <div class="content">
+    <div class:list={['content', hasHero && 'has-hero']}>
       <Navigation isExpedition={isExpedition} />
       <main id="main" tabindex="-1">
         <slot />
@@ -193,8 +195,6 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href
   // ── Module-level state ─────────────────────────────────────────────────
   let lenis:       InstanceType<typeof Lenis> | null = null
   let lenisTicker: ((time: number) => void)   | null = null
-  let mm:          ReturnType<typeof gsap.matchMedia> | null = null
-  let mmHero:      ReturnType<typeof gsap.matchMedia> | null = null
   // Elevation-profile scroll handler — held here so it can be detached on
   // navigation (initPageAnimations re-binds it every page-load).
   let elevScroll:  (() => void) | null = null
@@ -284,7 +284,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href
 
     // Expand the cursor ring when hovering interactive elements — one global
     // delegate on document so it works across every page without re-registering.
-    const HOVERABLE = 'a, button, [role="button"], .exp-card, .exp-grid-card, .trip-next-card, .filter-pill, .lb-trigger, .sort-select, .toc-item, .back-btn'
+    const HOVERABLE = 'a, button, [role="button"], .exp-grid-card, .trip-next-card, .filter-pill, .lb-trigger, .sort-select, .toc-item, .back-btn'
     document.addEventListener('mouseover', (e: MouseEvent) => {
       const hit = !!(e.target as HTMLElement)?.closest?.(HOVERABLE)
       cursor.classList.toggle('cursor--hover', hit)
@@ -303,14 +303,14 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href
     // animations would have revealed are set visible up-front.
     if (reduceMotion()) {
       gsap.set([
+        '.site-nav',
         '.hero-location', '.hero-sub', '.section-eyebrow', '.section-body',
         '.feature-quote', '.feature-link',
         '.about-eyebrow', '.about-sub', '.about-body', '.about-loc-badge',
         '.contact-pre', '.contact-sub', '.contact-email-label', '.contact-email',
         '.contact-footer', '.trip-stats-bar', '.back-btn', '.story-block',
         '.trip-map-section',
-        '.exp-card-num', '.exp-card-title', '.exp-card-meta',
-        '.end-cap-rule', '.end-cap-eyebrow', '.end-cap-heading', '.end-cap-arrow-wrap',
+        '.exp-preview-eyebrow', '.exp-preview-title', '.exp-preview-cta',
         '.trip-intro-eyebrow', '.trip-journal-eyebrow', '.trip-map-eyebrow',
         '.expeditions-eyebrow', '.expeditions-title', '.expeditions-count',
         '.expeditions-bar', '.gear-eyebrow', '.gear-title', '.gear-count', '.gear-bar',
@@ -406,377 +406,76 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href
         .to('.hero-title .line', { y: 0, duration: 1.3, stagger: 0.08, ease: 'power4.out' }, '-=0.5')
         .to('.hero-sub',         { opacity: 1, y: 0, duration: 1,   ease: 'power3.out' }, '-=0.7')
 
-      // Parallax only when there's no scrub canvas — the canvas drives its own
-      // framing (via position:sticky), so image parallax would fight it.
-      const heroCanvas = document.getElementById('hero-canvas') as HTMLCanvasElement | null
-      if (!heroCanvas) {
-        gsap.to(heroImgWrap, {
-          yPercent: 20, ease: 'none',
-          scrollTrigger: {
-            trigger: heroSection,
-            start: 'top top',
-            end:   'bottom top',
-            scrub: 1,
-          },
-        })
-      } else {
-        // Hero-text drift — as the drone ascends (the scrub), the content rises
-        // and fades, reinforcing the "lifting away" feel and clearing the frame
-        // before the sticky releases. Targets the .hero-content CONTAINER, so it
-        // doesn't fight the per-child intro tweens (which animate on load at
-        // progress 0, where this leaves the container at full opacity).
-        // On large screens (≥1200px) the title block is very tall, so the full
-        // -22% drift carried it almost off the top by the end — there we start
-        // it a little lower and travel less, so it fades in a better position.
-        // ⚑ TUNE: per-breakpoint start/end yPercent below; linear tracks scroll.
-        const big = window.matchMedia('(min-width: 1200px)').matches
-        gsap.fromTo('.hero-content',
-          { yPercent: big ? 6 : 0 },
-          {
-            yPercent: big ? -10 : -22,
-            opacity:  0,
-            ease:     'none',
-            scrollTrigger: {
-              trigger: heroSection,
-              start: 'top top',
-              end:   'bottom bottom',
-              scrub: true,
-            },
-          })
-      }
-
-      // ── Hero frame-sequence (canvas scrub) ────────────────────────────────
-      // Apple-style image frame sequence painted to <canvas>. Desktop AND mobile
-      // both scrub on scroll. The hero is pinned by CSS position:sticky (NOT a
-      // GSAP pin); a non-pinning ScrollTrigger reads scroll progress across the
-      // tall .hero track and maps it to a frame index.
-      //
-      // Frames come from a Cloudinary video (the same asset as the poster), via
-      // start-offset extraction (so_<pct>p) — no separate upload. The canvas
-      // carries data-cloud / data-version / data-public-id (parsed from
-      // heroSequenceUrl in HeroSection.astro); if any is missing we bail and the
-      // static poster <img> stays visible (hero is never blank).
-      //
-      // Caching: decoded HTMLImageElements (each awaited through img.decode()).
-      // We deliberately do NOT keep a permanent ImageBitmap per frame — an
-      // ImageBitmap is a non-evictable decoded buffer (~w×h×4 bytes), so 120 of
-      // them would pin hundreds of MB. Decoded <img>s let the browser evict and
-      // re-decode under pressure, and on mobile we additionally drop frames
-      // outside a window around the current index (the release-far mitigation).
-      if (heroCanvas && !reduceMotion()) try {
-        const ctx      = heroCanvas.getContext('2d')
-        const cloud    = heroCanvas.dataset.cloud
-        const version  = heroCanvas.dataset.version
-        const publicId = heroCanvas.dataset.publicId
-
-        if (ctx && cloud && version && publicId) {
-          // ── Per-breakpoint frame sets ─────────────────────────────────────
-          //   count  — frames in the sequence (mobile fewer to bound memory)
-          //   w / h  — Cloudinary delivery size per frame
-          //   window — frames to keep loaded each side of current (Infinity =
-          //            keep all on desktop; finite on mobile = release far)
-          // ⚑ TUNE: counts confirmed at 120 desktop / 48 mobile. Sizes/window
-          //   are safe defaults — adjust if frames look soft or RAM is tight.
-          const DESKTOP = { count: 120, w: 1920, h: 1080, window: Infinity, mq: '(min-width: 769px)' }
-          const MOBILE  = { count: 48,  w: 900,  h: 1350, window: 16,       mq: '(max-width: 768px)' }
-
-          const frameUrl = (i: number, count: number, w: number, h: number) => {
-            // Evenly-spaced frames by percentage of the video's duration.
-            const pct = count > 1 ? (i / (count - 1)) * 100 : 0
-            return `https://res.cloudinary.com/${cloud}/video/upload/` +
-                   `so_${pct.toFixed(3)}p,c_fill,g_center,w_${w},h_${h},f_auto,q_auto/` +
-                   `${version}/${publicId}.jpg`
-          }
-
-          // Build (or rebuild on breakpoint change) the whole controller.
-          // The returned cleanup is invoked by gsap.matchMedia on revert/swap.
-          // Concurrent loads. Cloudinary serves over HTTP/2, so several frames
-          // can stream in parallel; first-generation of each transform is slow
-          // (~1s) but immutable-cached after, so this only bites the first view.
-          const MAX_CONCURRENT = 8
-
-          const buildHero = (cfg: typeof DESKTOP) => {
-            let frames: (HTMLImageElement | undefined)[] = []
-            const loading      = new Set<number>()
-            let drawnFrame: HTMLImageElement | null = null
-            let targetProgress = 0
-            let rafId          = 0
-            let workers        = 0
-            let allLoaded      = false   // desktop: whole sequence cached
-            let destroyed      = false
-
-            const sizeCanvas = () => {
-              const dpr = Math.min(window.devicePixelRatio || 1, 2)
-              // Size to the canvas's OWN rendered box (the 100vh sticky layer),
-              // NOT .hero — .hero is now a 300vh scroll track, so measuring it
-              // made the backing store 3× too tall and squashed every frame.
-              const w = heroCanvas.clientWidth  || window.innerWidth
-              const h = heroCanvas.clientHeight || window.innerHeight
-              heroCanvas.width  = Math.max(1, Math.round(w * dpr))
-              heroCanvas.height = Math.max(1, Math.round(h * dpr))
-            }
-
-            // Cover-draw, biased to ~60% vertical to match the poster's
-            // object-position: center 60%.
-            const draw = (img: HTMLImageElement) => {
-              const cw = heroCanvas.width, ch = heroCanvas.height
-              const iw = img.naturalWidth || cfg.w, ih = img.naturalHeight || cfg.h
-              const scale = Math.max(cw / iw, ch / ih)
-              const dw = iw * scale, dh = ih * scale
-              ctx.drawImage(img, (cw - dw) / 2, (ch - dh) * 0.6, dw, dh)
-              drawnFrame = img
-            }
-
-            const indexFor = (p: number) =>
-              Math.min(Math.max(Math.round(p * (cfg.count - 1)), 0), cfg.count - 1)
-
-            // Closest already-loaded frame to idx — lets the scrub stay smooth
-            // (coarse, then sharpening) before the exact frame has streamed in.
-            const nearestLoaded = (idx: number): HTMLImageElement | null => {
-              if (frames[idx]) return frames[idx]!
-              for (let d = 1; d < cfg.count; d++) {
-                if (idx + d < cfg.count && frames[idx + d]) return frames[idx + d]!
-                if (idx - d >= 0        && frames[idx - d]) return frames[idx - d]!
-              }
-              return null
-            }
-
-            // SYNCHRONOUS paint — NEVER awaits the network. Draws the best frame
-            // available right now; loads fill in and re-trigger via schedule().
-            const paint = () => {
-              rafId = 0
-              if (destroyed) return
-              const idx = indexFor(targetProgress)
-              const img = frames[idx] || nearestLoaded(idx)
-              if (img && img !== drawnFrame) draw(img)
-            }
-            const schedule = () => { if (!rafId && !destroyed) rafId = requestAnimationFrame(paint) }
-
-            // Decode happens here, OFF the paint path. On completion we repaint
-            // (rAF-coalesced) so the freshly-arrived frame can upgrade the view.
-            const load = (i: number): Promise<void> => {
-              if (frames[i] || loading.has(i)) return Promise.resolve()
-              loading.add(i)
-              return new Promise((resolve) => {
-                const img = new Image()
-                img.decoding = 'async'
-                const finish = async () => {
-                  try { if (img.decode) await img.decode() } catch {}
-                  loading.delete(i)
-                  if (destroyed) return resolve()
-                  frames[i] = img
-                  schedule()
-                  resolve()
-                }
-                img.onload  = finish
-                img.onerror = () => { loading.delete(i); resolve() }
-                img.src = frameUrl(i, cfg.count, cfg.w, cfg.h)
-                if (img.complete && img.naturalWidth) finish()  // already cached
-              })
-            }
-
-            // Worker-pool preloader: each worker repeatedly loads the nearest
-            // not-yet-loaded in-window frame to the CURRENT index, so loading
-            // always chases where the user is. On mobile (finite window) it also
-            // releases frames that drift outside the window — the RAM mitigation.
-            const nextToLoad = (): number => {
-              const center = indexFor(targetProgress)
-              const max = cfg.window === Infinity ? cfg.count : cfg.window
-              for (let d = 0; d <= max; d++) {
-                const a = center + d, b = center - d
-                if (a < cfg.count && !frames[a] && !loading.has(a)) return a
-                if (b >= 0        && !frames[b] && !loading.has(b)) return b
-              }
-              return -1
-            }
-            const worker = async () => {
-              while (!destroyed) {
-                if (cfg.window !== Infinity) {
-                  const center = indexFor(targetProgress)
-                  for (let i = 0; i < frames.length; i++) {
-                    if (frames[i] && Math.abs(i - center) > cfg.window) frames[i] = undefined
-                  }
-                }
-                const next = nextToLoad()
-                if (next === -1) { if (cfg.window === Infinity) allLoaded = true; break }
-                await load(next)
-              }
-              workers--
-            }
-            const ensureWorkers = () => {
-              if (destroyed || allLoaded) return
-              // Spawn ONLY while there's actually a frame to load. Without the
-              // nextToLoad() !== -1 guard, a worker that finds nothing exits
-              // synchronously (no await), drops `workers`, and this loop
-              // respawns it forever → main-thread freeze. On mobile that's fatal
-              // because `allLoaded` is never set (finite window), so every
-              // scroll could trigger the spin. The guard caps spawns to real work.
-              while (workers < MAX_CONCURRENT && nextToLoad() !== -1) { workers++; worker() }
-            }
-
-            const onProgress = (p: number) => { targetProgress = p; schedule(); ensureWorkers() }
-            const onResize   = () => { sizeCanvas(); if (drawnFrame) draw(drawnFrame) }
-
-            // ── Boot: size, load frame 1 first, fade in, then stream the rest ──
-            sizeCanvas()
-            load(0).then(() => {
-              if (destroyed) return
-              schedule()                            // paint frame 1 (or nearest)
-              heroCanvas.classList.add('is-ready')  // fade canvas in over poster
-            })
-            ensureWorkers()
-
-            window.addEventListener('resize', onResize, { passive: true })
-
-            // No GSAP pin — the hero is held by CSS position:sticky now. This
-            // trigger only READS scroll progress across the tall .hero track
-            // (top of track at viewport top → bottom of track at viewport
-            // bottom) and maps it to a frame index. It's the same passive
-            // scroll read the section-reveal triggers use, so it works on
-            // mobile (a GSAP pin there corrupted scroll tracking → frozen hero
-            // + invisible content).
-            const st = ScrollTrigger.create({
-              trigger: heroSection,
-              start: 'top top',
-              end:   'bottom bottom',
-              onUpdate: self => onProgress(self.progress),
-            })
-
-            // Cleanup — runs on breakpoint swap AND page swap (matchMedia revert)
-            return () => {
-              destroyed = true
-              if (rafId) cancelAnimationFrame(rafId)
-              window.removeEventListener('resize', onResize)
-              st.kill()
-              frames = []
-              loading.clear()
-              drawnFrame = null
-              heroCanvas.classList.remove('is-ready')
-            }
-          }
-
-          mmHero = gsap.matchMedia()
-          mmHero.add(DESKTOP.mq, () => buildHero(DESKTOP))
-          mmHero.add(MOBILE.mq,  () => buildHero(MOBILE))
-        }
-      } catch (err) {
-        // A hero-canvas failure must NEVER break the rest of the page's
-        // animations (section reveals etc.) — log and leave the poster showing.
-        console.warn('[hero] frame-sequence init failed; poster stays', err)
-      }
-    }
-
-    // ── Expedition gallery (horizontal scroll + iris) ────────────────────
-    const expSection = document.querySelector<HTMLElement>('.expedition')
-    const expTrack   = document.getElementById('expedition-track') as HTMLElement | null
-    if (expSection && expTrack) {
-      // Cards fade in (0 → 1) as the gallery section enters the viewport.
-      // Fully opaque by the time the section's top crosses ~40% from the
-      // viewport bottom (i.e. the user has scrolled it into the lower half).
-      gsap.set('.exp-card, .exp-end-cap', { opacity: 0 })
-      gsap.to('.exp-card, .exp-end-cap', {
+      // Nav stays hidden over the hero and fades in as it scrolls away — starts
+      // once the hero's bottom edge is halfway up the viewport, fully visible
+      // by the time it's 5% from the top.
+      gsap.set('.site-nav', { opacity: 0 })
+      gsap.to('.site-nav', {
         opacity: 1,
-        ease: 'none',
+        ease:    'none',
         scrollTrigger: {
-          trigger: expSection,
-          start: 'top 95%',     // small offset before begin = less twitchy
-          end:   'top 40%',     // opacity 1 when section top is ~60% from bottom — cards arrive, not appear
-          scrub: 0.5,
+          trigger: heroSection,
+          start:   'bottom 50%',
+          end:     'bottom 5%',
+          scrub:   true,
         },
       })
 
-      mm = gsap.matchMedia()
+      // ── Hero background video ──────────────────────────────────────────
+      // ⚑ TEMP: plain autoplay/loop video, no scroll-scrub — .hero is a flat
+      // 100vh section for now (was a tall scroll-scrubbed frame sequence; see
+      // git history). To be replaced with a proper background video reel.
+      const heroVideo = document.getElementById('hero-video') as HTMLVideoElement | null
+      if (heroVideo) {
+        const reveal = () => heroVideo.classList.add('is-ready')
+        if (heroVideo.readyState >= 2) reveal()
+        else heroVideo.addEventListener('loadeddata', reveal, { once: true })
+        heroVideo.play?.().catch(() => {})
+      }
+    }
 
-      mm.add('(min-width: 769px)', () => {
-        const cards = gsap.utils.toArray<HTMLElement>('.exp-card')
-        // Compute live so invalidateOnRefresh picks up the post-resize value.
-        // A captured const would return the stale width after a browser resize.
-        const getScroll = () => expTrack.scrollWidth - window.innerWidth
-
-        const hScroll = gsap.to(expTrack, {
-          x: () => -getScroll(),
-          ease: 'none',
-          scrollTrigger: {
-            trigger: expSection,
-            pin: true,
-            scrub: 0.8,
-            end: () => `+=${getScroll()}`,
-            invalidateOnRefresh: true,
-            // anticipatePin removed: it pre-pins the section based on scroll
-            // velocity, but the scrub lag then leaves expTrack at x=0 for
-            // the anticipation window, making all cards flash into view at
-            // once. Without anticipation the pin starts at the exact trigger
-            // point and the scrub stays consistent.
-          },
-        })
-
-        cards.forEach((card) => {
-          // Per-card image parallax
-          gsap.to(card.querySelector('.exp-card-img-wrap'), {
-            x: 40, ease: 'none',
-            scrollTrigger: {
-              trigger: card,
-              containerAnimation: hScroll,
-              start: 'left right',
-              end:   'right left',
-              scrub: 1,
-            },
+    // ── Expeditions preview (homepage grid) ──────────────────────────────
+    // Plain grid, no scroll-pin — header stagger then cards fade/rise in as
+    // the section enters the viewport.
+    const expPreviewGrid = document.getElementById('exp-preview-grid')
+    if (expPreviewGrid) {
+      ScrollTrigger.create({
+        trigger: '.exp-preview',
+        start: 'top 75%',
+        once: true,
+        onEnter: () => {
+          gsap.to('.exp-preview-eyebrow', { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out' })
+          gsap.to('.exp-preview-title',   { opacity: 1, y: 0, duration: 0.9, ease: 'power4.out', delay: 0.1 })
+          gsap.to('.exp-grid-card', {
+            opacity: 1, y: 0, stagger: 0.06, duration: 0.7, ease: 'power3.out', delay: 0.2,
           })
-          // Card text stagger-in
-          gsap.to(card.querySelectorAll('.exp-card-num, .exp-card-title, .exp-card-meta'), {
-            opacity: 1, y: 0, stagger: 0.08, duration: 0.7, ease: 'power3.out',
-            scrollTrigger: {
-              trigger: card,
-              containerAnimation: hScroll,
-              start: 'left 80%',
-              toggleActions: 'play none none reverse',
-            },
-          })
-        })
-
-        // End-cap stagger-in
-        const endCap = document.querySelector<HTMLElement>('.exp-end-cap')
-        if (endCap) {
-          gsap.to(endCap.querySelectorAll('.end-cap-rule, .end-cap-eyebrow, .end-cap-heading, .end-cap-arrow-wrap'), {
-            opacity: 1, y: 0, stagger: 0.1, duration: 0.8, ease: 'power3.out',
-            scrollTrigger: {
-              trigger: endCap,
-              containerAnimation: hScroll,
-              start: 'left 85%',
-              toggleActions: 'play none none reverse',
-            },
-          })
-        }
-      })
-
-      // Mobile: reveal card text immediately (vertical layout)
-      mm.add('(max-width: 768px)', () => {
-        gsap.utils.toArray<HTMLElement>('.exp-card-num, .exp-card-title, .exp-card-meta')
-          .forEach(el => gsap.set(el, { opacity: 1, y: 0 }))
-      })
-
-      // Iris transition on card click — video stops first, iris uses the static image
-      document.querySelectorAll<HTMLElement>('.exp-card').forEach((card) => {
-        card.addEventListener('mouseenter', () => preloadImage(card.dataset.heroUrl), { once: true })
-
-        card.addEventListener('click', (e) => {
-          e.preventDefault()
-          // Pause any playing card video before iris expands
-          card.querySelector<HTMLVideoElement>('.exp-card-video')?.pause()
-          const src     = card.dataset.src     ?? ''
-          const href    = card.dataset.href    ?? card.getAttribute('href') ?? '/'
-          const heroSrc = card.dataset.heroUrl ?? ''
-          const img     = card.querySelector<HTMLImageElement>('.exp-card-img-wrap img')
-          if (!img || !src) { window.location.href = href; return }
-          playIrisTransition({ src, rect: img.getBoundingClientRect(), href, heroSrc })
-        })
+          gsap.to('.exp-preview-cta', { opacity: 1, y: 0, duration: 0.7, ease: 'power3.out', delay: 0.5 })
+        },
       })
     }
 
+    // ── Grid-card iris transition (expeditions preview + /expeditions archive) ──
+    // Shared by every .exp-grid-card on the site — video stops first, iris
+    // uses the static image.
+    document.querySelectorAll<HTMLElement>('.exp-grid-card').forEach((card) => {
+      card.addEventListener('mouseenter', () => preloadImage(card.dataset.heroUrl), { once: true })
+
+      card.addEventListener('click', (e) => {
+        e.preventDefault()
+        card.querySelector<HTMLVideoElement>('.exp-card-video')?.pause()
+        const src     = card.dataset.src     ?? ''
+        const href    = card.dataset.href    ?? card.getAttribute('href') ?? '/'
+        const heroSrc = card.dataset.heroUrl ?? ''
+        const img     = card.querySelector<HTMLImageElement>('.exp-grid-img-wrap img')
+        if (!img || !src) { window.location.href = href; return }
+        playIrisTransition({ src, rect: img.getBoundingClientRect(), href, heroSrc })
+      })
+    })
+
     // ── Card-video hover preview (.exp-card-video) ────────────────────────
-    // Runs on any page that has .exp-card-video elements — home gallery AND
-    // the expeditions archive grid. Touch devices autoplay on visibility;
-    // mouse devices play on hover. Reduced motion skips entirely.
+    // Runs on any page that has .exp-card-video elements — the expeditions
+    // preview grid AND the expeditions archive grid. Touch devices autoplay
+    // on visibility; mouse devices play on hover. Reduced motion skips entirely.
     if (!reduceMotion()) {
       const cardVideos = document.querySelectorAll<HTMLVideoElement>('.exp-card-video')
       if (cardVideos.length) {
@@ -798,9 +497,9 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href
         } else {
           cardVideos.forEach(vid => {
             // Closest card wrapper covers every layout that uses .exp-card-video:
-            // .exp-card (home gallery), .exp-grid-card (expeditions archive),
-            // .trip-next-card (next-expedition CTA at the bottom of trip pages).
-            const card = vid.closest<HTMLElement>('.exp-card, .exp-grid-card, .trip-next-card')
+            // .exp-grid-card (expeditions preview + archive), .trip-next-card
+            // (next-expedition CTA at the bottom of trip pages).
+            const card = vid.closest<HTMLElement>('.exp-grid-card, .trip-next-card')
             if (!card) return
             card.addEventListener('mouseenter', () => {
               if (!vid.src) vid.src = vid.dataset.src ?? ''
@@ -1554,15 +1253,13 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href
   }, { passive: true })
 
   // ── Teardown + reinit between page swaps ──────────────────────────────
-  // IMPORTANT: initLenis() must run BEFORE mm.revert() and ScrollTrigger.killAll()
-  // so the scrollerProxy has a valid lenis reference when GSAP calls scrollTop()
+  // IMPORTANT: initLenis() must run BEFORE ScrollTrigger.killAll() so the
+  // scrollerProxy has a valid lenis reference when GSAP calls scrollTop()
   // during cleanup. Otherwise, lenis is null → proxy throws → initLenis() never runs.
   document.addEventListener('astro:after-swap', () => {
     if (lenisTicker) { gsap.ticker.remove(lenisTicker); lenisTicker = null }
     if (lenis)       { lenis.destroy(); lenis = null }
     initLenis()                                                    // ← re-create lenis first
-    if (mm)          { mm.revert(); mm = null }                    // ← now proxy is valid
-    if (mmHero)      { mmHero.revert(); mmHero = null }
     if (elevScroll)  { window.removeEventListener('scroll', elevScroll); elevScroll = null }
     ScrollTrigger.killAll()                                        // ← now proxy is valid
     // Clean refresh after killAll so initPageAnimations starts from a

@@ -40,7 +40,7 @@ npm run gen:alt    # generate/refresh image alt text (scripts/generate-alt-capti
 - The `trip` schema (`sanity/schemaTypes/trip.ts`) drives most of the site: `pageTitle` (array of display lines), `fieldIntel`, `gearList` (Field Kit), `elevationPoints`/`routeGpx`, `featured` (drag-orderable in Studio → controls home-page feature order), Cloudinary `heroVideo`/`cardVideo`.
 
 ### All client-side behavior lives in `src/layouts/BaseLayout.astro`
-This is the single most important file. Its module `<script>` owns **every** animation and interaction site-wide; the section components (`HeroSection`, `ExpeditionGallery`, `FeaturedSection`, etc.) are **markup-only with no scripts**. It contains:
+This is the single most important file. Its module `<script>` owns **every** animation and interaction site-wide; the section components (`HeroSection`, `ExpeditionsPreview`, `FeaturedSection`, etc.) are **markup-only with no scripts**. It contains:
 - `initPageAnimations()` — run on **every `astro:page-load`** (so it works regardless of entry page), wiring all GSAP ScrollTrigger animations, the hero scrub, section reveals, and the route map.
 - **Lenis** smooth scroll — desktop only; **disabled on touch** (`isTouch()`), where native scroll + ScrollTrigger run instead. On desktop Lenis drives `ScrollTrigger.update()` via a `scrollerProxy`.
 - Custom cursor (rAF loop, `transition:persist`), nav toggle (document-delegated so it survives swaps).

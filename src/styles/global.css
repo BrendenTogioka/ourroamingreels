@@ -152,6 +152,10 @@ body::before {
   align-items: center;
   padding: 1.75rem 2.5rem;
 }
+/* Home page only: nav starts hidden over the hero and is faded in by JS as the
+   hero scrolls away (see initPageAnimations in BaseLayout.astro). Set here too
+   so it's hidden from first paint, before the script runs. */
+.has-hero .site-nav { opacity: 0; }
 .nav-logo {
   font-family: var(--font-display);
   font-weight: 900;
@@ -220,14 +224,15 @@ body::before {
 /* ─────────────────────────────────────────────────
    HERO SECTION
 ───────────────────────────────────────────────── */
-/* Tall scroll TRACK. Its height is the scrub length: the sticky layer below
-   stays for (track − 100vh) of scroll, so 300vh ≈ the old "+=200%" pin range.
-   ⚑ TUNE pacing here: 250vh = quicker reveal, 350vh = slower/more cinematic.
+/* ⚑ TEMP: flat 100vh on both breakpoints while the scroll-scrub is disabled
+   (background video reel is coming to replace it). .hero-sticky below is a
+   no-op at this height (nothing left to scroll past) but stays in place so
+   restoring a taller track later is a one-line change.
    NOTE: must NOT set overflow here — overflow on a sticky element's ancestor
    breaks position:sticky. Clipping lives on .hero-sticky itself. */
 .hero {
   position: relative;
-  height: 300vh;
+  height: 100vh;
 }
 /* Sticky layer — holds the canvas/poster/overlay/content at viewport height
    while the track scrolls past. Replaces the GSAP pin (robust on mobile). */
@@ -237,8 +242,7 @@ body::before {
   height: 100vh;
   overflow: hidden;
   display: flex;
-  align-items: flex-end;
-  padding-bottom: 8vh;
+  align-items: center;
 }
 /* parallax image container — taller than viewport so it can move */
 .hero-img-wrap {
@@ -255,18 +259,18 @@ body::before {
   object-fit: cover; object-position: center 60%;
   display: block;
 }
-/* Canvas frame-sequence — fades in over the static poster once frame 1 is
-   painted (.is-ready added by JS), so the hero is never blank. Cover-fit is
-   handled in JS via drawImage, so no object-fit here. */
-.hero-canvas {
+/* Background video — fades in over the static poster once it can play
+   (.is-ready added by JS), so the hero is never blank while it loads. */
+.hero-video {
   position: absolute;
   inset: 0;
   width: 100%; height: 100%;
+  object-fit: cover; object-position: center 60%;
   display: block;
   opacity: 0;
   transition: opacity 0.6s ease;
 }
-.hero-canvas.is-ready { opacity: 1; }
+.hero-video.is-ready { opacity: 1; }
 /* gradient overlay darkens bottom so text is legible */
 .hero-overlay {
   position: absolute;
@@ -328,19 +332,14 @@ body::before {
 }
 .hero-title .accent { color: var(--rust); }
 .hero-sub {
-  margin-top: 1.5rem;
+  position: absolute;
+  z-index: 2;
+  right: 2.5rem;
+  bottom: 8vh;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   opacity: 0;
   transform: translateY(12px);
-}
-.hero-sub-text {
-  font-family: var(--font-body);
-  font-style: italic;
-  font-size: clamp(1rem, 1.4vw, 1.25rem);
-  color: var(--fog);
-  max-width: 40ch;
 }
 .hero-scroll-cue {
   display: flex;
@@ -367,66 +366,52 @@ body::before {
 }
 
 /* ─────────────────────────────────────────────────
-   EXPEDITION GALLERY (horizontal scroll)
+   EXPEDITIONS PREVIEW (homepage grid)
+   Same card style as /expeditions (.exp-grid-card, defined below with the
+   archive grid) — just the most recent few, plus a link to the full archive.
 ───────────────────────────────────────────────── */
-.expedition {
+.exp-preview {
   position: relative;
-  overflow: hidden;
-  /* Seal the 18vw left padding gap — without a background the section is
-     transparent there, and when GSAP pins it (position:fixed) whatever is
-     behind shows through. This prevents content bleed during the pin. */
-  background: var(--ink);
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 10vh 2.5rem 8vh;
 }
-.expedition-header {
-  position: absolute;
-  top: 4.5rem; left: 0; right: 0; /* clear the fixed nav / brand logo */
-  z-index: 10;
-  padding: 1rem 2.5rem;
+.exp-preview-header { margin-bottom: 3rem; }
+.exp-preview-eyebrow {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
-  pointer-events: none;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  opacity: 0;
+  transform: translateY(12px);
 }
-.expedition-label {
+.exp-preview-title {
   font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 0.7rem;
-  letter-spacing: 0.3em;
-  color: var(--fog);
+  font-weight: 900;
+  font-size: clamp(2.5rem, 6vw, 5rem);
+  line-height: 0.9;
+  color: var(--bone);
+  opacity: 0;
+  transform: translateY(16px);
 }
-.expedition-count {
+.exp-preview-cta {
+  display: inline-block;
+  margin-top: 3rem;
   font-family: var(--font-body);
-  font-size: 0.65rem;
-  color: var(--rust);
-  letter-spacing: 0.1em;
+  font-size: 0.75rem;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--bone);
+  border-bottom: 1px solid var(--rust);
+  padding-bottom: 0.35rem;
+  opacity: 0;
+  transform: translateY(14px);
 }
-.expedition-track {
-  display: flex;
-  height: 100vh;
-  will-change: transform;
-}
-@media (min-width: 769px) {
-  .expedition-track {
-    padding-left: 18vw;
-  }
-}
-.exp-card {
-  position: relative;
-  flex-shrink: 0;
-  width: 60vw;
-  height: 100vh;
-  overflow: hidden;
-}
-.exp-card:first-child { width: 70vw; }
-.exp-card-img-wrap {
-  position: absolute;
-  inset: 0;
-  will-change: transform;
-}
-.exp-card-img-wrap img {
-  width: 100%; height: 100%;
-  object-fit: cover;
-}
+.exp-preview-cta span { display: inline-block; transition: transform 0.3s var(--ease-expo); }
+.exp-preview-cta:hover span { transform: translateX(5px); }
+
+/* Card background video — shared by every .exp-grid-card (preview + archive)
+   and the trip-page "next expedition" card. */
 .exp-card-video {
   position: absolute;
   inset: 0;
@@ -435,152 +420,7 @@ body::before {
   opacity: 0;
   transition: opacity 0.5s ease;
 }
-.exp-card-video.is-playing {
-  opacity: 1;
-}
-.exp-card-overlay {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    to top,
-    rgba(12, 9, 6, 0.82) 0%,
-    rgba(12, 9, 6, 0.0) 55%
-  );
-  z-index: 1;
-}
-.exp-card-content {
-  position: absolute;
-  bottom: 0; left: 0; right: 0;
-  z-index: 2;
-  padding: 2.5rem;
-}
-.exp-card-num {
-  font-family: var(--font-body);
-  font-size: 0.65rem;
-  letter-spacing: 0.25em;
-  color: var(--rust);
-  margin-bottom: 0.5rem;
-  opacity: 0; transform: translateY(12px);
-}
-.exp-card-title {
-  font-family: var(--font-display);
-  font-weight: 900;
-  font-size: clamp(2.5rem, 5vw, 5.5rem);
-  line-height: 0.9;
-  letter-spacing: 0.01em;
-  color: var(--bone);
-  overflow: hidden;
-  opacity: 0; transform: translateY(16px);
-}
-.exp-card-meta {
-  margin-top: 0.75rem;
-  font-family: var(--font-body);
-  font-style: italic;
-  font-size: 0.9rem;
-  color: var(--fog);
-  opacity: 0; transform: translateY(10px);
-}
-/* Open label — appears on card hover */
-.exp-card-open {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%) scale(0.85);
-  font-family: var(--font-display);
-  font-weight: 900;
-  font-size: 0.75rem;
-  letter-spacing: 0.3em;
-  color: var(--bone);
-  background: rgba(12,9,6,0.6);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255,255,255,0.15);
-  padding: 0.6em 1.2em;
-  z-index: 3;
-  opacity: 0;
-  transition: opacity 0.3s, transform 0.3s var(--ease-expo);
-  pointer-events: none;
-}
-.exp-card:hover .exp-card-open {
-  opacity: 1;
-  transform: translate(-50%, -50%) scale(1);
-}
-
-/* Editorial end-cap — "View All" bookend for the horizontal slider */
-.exp-end-cap {
-  flex-shrink: 0;
-  width: 28vw;
-  height: 100vh;
-  background: var(--char);
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  padding-left: 4vw;
-  padding-right: 4vw;
-  border-left: 1px solid rgba(240, 226, 206, 0.06);
-  overflow: hidden;
-  transition: background 0.4s var(--ease-expo);
-}
-.exp-end-cap:hover {
-  background: color-mix(in srgb, var(--char) 80%, #2a2018);
-}
-.end-cap-inner {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-.end-cap-rule {
-  width: 2rem;
-  height: 1px;
-  background: var(--rust);
-  opacity: 0;
-  transform: translateY(14px);
-}
-.end-cap-eyebrow {
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
-  letter-spacing: 0.25em;
-  text-transform: uppercase;
-  color: var(--fog);
-  opacity: 0;
-  transform: translateY(14px);
-}
-.end-cap-heading {
-  font-family: var(--font-display);
-  font-weight: 900;
-  font-size: clamp(1.8rem, 3vw, 3.5rem);
-  line-height: 0.88;
-  letter-spacing: 0.01em;
-  color: var(--bone);
-  opacity: 0;
-  transform: translateY(16px);
-}
-.end-cap-arrow-wrap {
-  opacity: 0;
-  transform: translateY(14px);
-}
-.end-cap-arrow {
-  font-family: var(--font-display);
-  font-size: clamp(1.8rem, 3.5vw, 3.5rem);
-  color: var(--rust);
-  line-height: 1;
-  display: block;
-  transition: transform 0.35s var(--ease-expo);
-}
-.exp-end-cap:hover .end-cap-arrow {
-  transform: translateX(10px);
-}
-
-/* Mobile "View All" CTA — shown below the grid on mobile, hidden on desktop */
-.exp-view-all {
-  display: none;
-}
-
-/* Spacer card for end padding */
-.exp-spacer {
-  flex-shrink: 0;
-  width: 8vw;
-  height: 100vh;
-}
+.exp-card-video.is-playing { opacity: 1; }
 
 .section-eyebrow {
   display: flex;
@@ -3072,13 +2912,7 @@ body::before {
   .cursor, .cursor-ring { display: none !important; }
   body { cursor: auto; }
   button, a, [style*="cursor: none"] { cursor: pointer !important; }
-  .back-btn, .trip-next-card, .exp-card { cursor: pointer !important; }
-}
-
-/* ── Tablet (≤ 1024px) ── */
-@media (max-width: 1024px) {
-  .exp-card         { width: 70vw; }
-  .exp-card:first-child { width: 80vw; }
+  .back-btn, .trip-next-card { cursor: pointer !important; }
 }
 
 /* ── Stats bar — below ~1050px the sidebar right-pad reservation causes the
@@ -3104,71 +2938,15 @@ body::before {
   .nav-links a { font-size: 0.65rem; }
 
   /* Hero */
-  /* Shorter scrub track on phones — 300vh is a long swipe and pushes content
-     too far down. 220vh ≈ 1.2 screens of scrub, then the page continues. */
-  .hero { height: 220vh; }
-  /* Lift the hero text ~80px off the bottom on phones (was sitting too low).
-     ⚑ TUNE: the +80px addend. */
-  .hero-sticky { padding-bottom: calc(8vh + 80px); }
   .hero-title {
     font-size: clamp(4.5rem, 24vw, 8rem);
   }
   .hero-content { padding: 0 1.25rem; }
-  .hero-sub {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 1.5rem;
-  }
-  .hero-sub-text { font-size: 1rem; max-width: 100%; }
+  .hero-sub { right: 1.25rem; }
   .hero-scroll-cue { display: none; }
 
-  /* Expedition gallery — CSS snap scroll on mobile */
-  .expedition { overflow: visible; padding-top: 72px; /* clear fixed nav */ }
-  .expedition-header {
-    /* Normal flow on mobile — sits above the card grid, not overlapping it */
-    position: relative;
-    top: auto;
-    padding: 1rem 1.25rem 0.5rem;
-  }
-  .expedition-track {
-    /* Reset GSAP horizontal layout — vertical on mobile */
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    height: auto !important;
-    transform: none !important; /* override GSAP x */
-    overflow: visible;
-    gap: 2px;
-  }
-  .exp-card {
-    width: 100% !important;
-    height: 55vw;
-    min-height: 220px;
-  }
-  .exp-card:first-child { width: 100% !important; }
-  .exp-spacer { display: none; }
-  .exp-end-cap { display: none; }
-  .exp-card-title { font-size: clamp(1.6rem, 5vw, 2.8rem); }
-  .exp-card-num, .exp-card-meta { opacity: 1 !important; transform: none !important; }
-  .exp-card-title { opacity: 1 !important; transform: none !important; }
-  .exp-card-open { display: none; } /* tap replaces hover on mobile */
-
-  /* Mobile view-all CTA */
-  .exp-view-all {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin: 1.5rem 1.25rem 2rem;
-    padding: 0.85rem 1.25rem;
-    border: 1px solid rgba(240, 226, 206, 0.15);
-    font-family: var(--font-mono);
-    font-size: 0.65rem;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--fog);
-    transition: border-color 0.25s, color 0.25s;
-  }
-  .exp-view-all:hover { border-color: var(--rust); color: var(--bone); }
-
+  /* Expeditions preview */
+  .exp-preview { padding: 8vh 1.25rem 6vh; }
 
   /* Section shared — full width titles on mobile */
   .section-title { font-size: clamp(3rem, 14vw, 6rem); }
@@ -3232,8 +3010,6 @@ body::before {
 @media (max-width: 480px) {
   .hero-title { font-size: clamp(4rem, 26vw, 7rem); }
   .section-title { font-size: clamp(2.8rem, 16vw, 5rem); }
-  .expedition-track { grid-template-columns: 1fr; }
-  .exp-card { height: 80vw; min-height: 280px; }
   /* stats already single-column flex at ≤768px — nothing to override */
 }
 
@@ -3249,7 +3025,7 @@ body::before {
   /* Restore the real cursor; hide the custom trailing one */
   body { cursor: auto; }
   .cursor, .cursor-ring { display: none; }
-  a, button, [role="button"], .exp-card, .exp-grid-card { cursor: pointer; }
+  a, button, [role="button"], .exp-grid-card { cursor: pointer; }
 }
 
 /* ── Additional mobile refinements ── */

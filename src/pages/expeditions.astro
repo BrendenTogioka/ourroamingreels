@@ -208,9 +208,6 @@ const cards = trips.map((trip: any, i: number) => ({
 </BaseLayout>
 
 <script>
-  import { playIrisTransition } from '../utils/irisTransition'
-  import { preloadImage } from '../utils/viewTransition'
-
   function initExpeditions() {
     const grid    = document.getElementById('expeditions-grid')
     const empty   = document.getElementById('expeditions-empty')
@@ -290,22 +287,9 @@ const cards = trips.map((trip: any, i: number) => ({
 
     sortSel?.addEventListener('change', () => applySort(sortSel.value))
 
-    // Iris transition on card click
-    cards().forEach(card => {
-      card.addEventListener('mouseenter', () => preloadImage(card.dataset.heroUrl), { once: true })
-
-      card.addEventListener('click', e => {
-        e.preventDefault()
-        // Pause any playing card video so iris uses the static image
-        card.querySelector<HTMLVideoElement>('.exp-card-video')?.pause()
-        const src     = card.dataset.src     ?? ''
-        const href    = card.dataset.href    ?? card.getAttribute('href') ?? '/'
-        const heroSrc = card.dataset.heroUrl ?? ''
-        const img     = card.querySelector<HTMLImageElement>('.exp-grid-img-wrap img')
-        if (!img || !src) { window.location.href = href; return }
-        playIrisTransition({ src, rect: img.getBoundingClientRect(), href, heroSrc })
-      })
-    })
+    // Iris transition + hover preload on card click is wired globally for
+    // every .exp-grid-card in BaseLayout.astro (shared with the homepage
+    // expeditions preview) — nothing page-specific needed here.
   }
 
   document.addEventListener('astro:page-load', initExpeditions)

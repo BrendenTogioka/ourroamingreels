@@ -1,0 +1,104 @@
+---
+import { cardVideoSrc } from '../lib/cloudinaryVideo'
+
+interface Expedition {
+  id:           string
+  title:        string
+  description:  string
+  location:     string
+  date:         string
+  category:     string
+  tags:         string[]
+  accent:       string
+  img:          string
+  imgSrcset:    string
+  alt:          string
+  href:         string
+  heroUrl:      string
+  cardVideoUrl?: string
+}
+
+interface Props {
+  expeditions: Expedition[]
+}
+
+const { expeditions } = Astro.props
+
+const CATEGORY_LABELS: Record<string, string> = {
+  desert:   'Desert',
+  canyon:   'Canyon',
+  arctic:   'Arctic',
+  mountain: 'Mountain',
+  jungle:   'Jungle',
+  coastal:  'Coastal',
+  forest:   'Forest',
+  city:     'City',
+}
+---
+
+<!-- Homepage preview of the expedition archive — same card style as
+     /expeditions (.exp-grid-card), just the most recent few plus a link to
+     the full archive. No horizontal scroll-pin here (that lived on the old
+     .expedition-track gallery); this is a plain grid. -->
+<section class="exp-preview" id="expedition">
+  <div class="exp-preview-header">
+    <div class="exp-preview-eyebrow">
+      <span class="eyebrow-line"></span>
+      <span class="eyebrow-text">Expedition Log</span>
+    </div>
+    <h2 class="exp-preview-title">RECENT EXPEDITIONS</h2>
+  </div>
+
+  <div class="expeditions-grid" id="exp-preview-grid">
+    {expeditions.map((exp) => (
+      <a
+        class="exp-grid-card"
+        href={exp.href}
+        data-hero-url={exp.heroUrl}
+        data-src={exp.img}
+        data-href={exp.href}
+        style={`--accent:${exp.accent}`}
+      >
+        <div class="exp-grid-img-wrap">
+          <img
+            src={exp.img}
+            srcset={exp.imgSrcset}
+            sizes="(max-width: 480px) 100vw, (max-width: 768px) 50vw, 360px"
+            alt={exp.alt}
+            loading="lazy"
+            decoding="async"
+          />
+          {exp.cardVideoUrl && (
+            <video
+              class="exp-card-video"
+              data-src={cardVideoSrc(exp.cardVideoUrl)}
+              muted
+              loop
+              playsinline
+              preload="none"
+              aria-hidden="true"
+            />
+          )}
+        </div>
+        <div class="exp-grid-overlay"></div>
+        <div class="exp-grid-content">
+          {exp.category && (
+            <span class="exp-grid-category">{CATEGORY_LABELS[exp.category] ?? exp.category}</span>
+          )}
+          <h3 class="exp-grid-title">{exp.title}</h3>
+          <p class="exp-grid-meta">{exp.location} · {exp.date}</p>
+          {exp.description && <p class="exp-grid-desc">{exp.description}</p>}
+          {exp.tags.length > 0 && (
+            <div class="exp-grid-tags">
+              {exp.tags.slice(0, 3).map((tag) => <span class="exp-grid-tag">{tag}</span>)}
+            </div>
+          )}
+        </div>
+      </a>
+    ))}
+  </div>
+
+  <a class="exp-preview-cta" href="/expeditions">
+    See All Expeditions <span aria-hidden="true">→</span>
+  </a>
+</section>

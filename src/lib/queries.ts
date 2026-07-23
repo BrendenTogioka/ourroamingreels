@@ -60,9 +60,9 @@ export const ALL_TRIPS_QUERY = `
   }
 `
 
-// 10 most recent trips — used by the home page gallery
+// 6 most recent trips — used by the home page expeditions preview
 export const RECENT_TRIPS_QUERY = `
-  *[_type == "trip"] | order(tripDate desc) [0...10] {
+  *[_type == "trip"] | order(tripDate desc) [0...6] {
     ${TRIP_FIELDS}
   }
 `
